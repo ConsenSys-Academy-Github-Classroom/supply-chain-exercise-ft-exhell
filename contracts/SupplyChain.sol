@@ -4,27 +4,35 @@ pragma solidity >=0.5.16 <0.9.0;
 contract SupplyChain {
 
   // <owner>
-
+  address public owner;
   // <skuCount>
-
+  uint public skuCount;
   // <items mapping>
-
+  mapping(uint => Item) public items;
   // <enum State: ForSale, Sold, Shipped, Received>
-
+  enum State {ForSale, Sold, Shipped, Received}
+  State _state;
   // <struct Item: name, sku, price, state, seller, and buyer>
-  
+  struct Item {
+    string name;
+    uint sku;
+    uint price;
+    State state;
+    address payable seller;
+    address payable buyer;
+  }
   /* 
    * Events
    */
 
   // <LogForSale event: sku arg>
-
+  event LogForSale(uint sku);
   // <LogSold event: sku arg>
-
+  event LogSold(uint sku);
   // <LogShipped event: sku arg>
-
+  event LogShipped(uint sku);
   // <LogReceived event: sku arg>
-
+  event LogReceived(uint sku);
 
   /* 
    * Modifiers
@@ -35,12 +43,12 @@ contract SupplyChain {
   // <modifier: isOwner
 
   modifier verifyCaller (address _address) { 
-    // require (msg.sender == _address); 
+    require (msg.sender == _address); 
     _;
   }
 
   modifier paidEnough(uint _price) { 
-    // require(msg.value >= _price); 
+    require(msg.value >= _price); 
     _;
   }
 
@@ -67,11 +75,24 @@ contract SupplyChain {
 
   constructor() public {
     // 1. Set the owner to the transaction sender
+    owner = msg.sender;
     // 2. Initialize the sku count to 0. Question, is this necessary?
+    // Answer: it's already 0.
   }
 
   function addItem(string memory _name, uint _price) public returns (bool) {
     // 1. Create a new item and put in array
+    items[skuCount] = Item ({
+      name: _name,
+      sku: skuCount,
+      price: _price,
+      state: State.ForSale,
+      seller: msg.sender,
+      buyer: address(0)
+    });
+    emit LogForSale(skuCount);
+    skuCount++;
+    return true;
     // 2. Increment the skuCount by one
     // 3. Emit the appropriate event
     // 4. return true
@@ -102,32 +123,57 @@ contract SupplyChain {
   //    - check the value after the function is called to make 
   //      sure the buyer is refunded any excess ether sent. 
   // 6. call the event associated with this function!
-  function buyItem(uint sku) public {}
+  function buyItem(uint sku) public payable {
+    require(items[sku].seller != address(0), "The item is not for sale.");
+    require(items[sku].state != State.Sold, "The item is sold.");
+    require(msg.sender != items[sku].seller, "You can't buy from yourself.");
+    require(msg.value >= items[sku].price, "It's not enough to buy this item.");
+    items[sku].buyer = msg.sender;
+    items[sku].state = State.Sold;
+    if(msg.value > items[sku].price) {
+      items[sku].buyer.transfer(msg.value - items[sku].price);
+      items[sku].seller.transfer(items[sku].price);
+    } else {
+      items[sku].seller.transfer(msg.value);
+    }
+    emit LogSold(sku);
+  }
 
   // 1. Add modifiers to check:
   //    - the item is sold already 
   //    - the person calling this function is the seller. 
   // 2. Change the state of the item to shipped. 
   // 3. call the event associated with this function!
-  function shipItem(uint sku) public {}
+  function shipItem(uint sku) public {
+    require(items[sku].state != State.Shipped, "The item has already been shipped.");
+    require(msg.sender == items[sku].seller, "You didn't sell this item.");
+    items[sku].state = State.Shipped;
+    emit LogShipped(sku);
+  }
 
   // 1. Add modifiers to check 
   //    - the item is shipped already 
   //    - the person calling this function is the buyer. 
   // 2. Change the state of the item to received. 
   // 3. Call the event associated with this function!
-  function receiveItem(uint sku) public {}
+  function receiveItem(uint sku) public {
+    require(msg.sender == items[sku].buyer, "You didn't buy this item.");
+    items[sku].state = State.Received;
+    emit LogReceived(sku);
+  }
 
   // Uncomment the following code block. it is needed to run tests
-  /* function fetchItem(uint _sku) public view */ 
-  /*   returns (string memory name, uint sku, uint price, uint state, address seller, address buyer) */ 
-  /* { */
-  /*   name = items[_sku].name; */
-  /*   sku = items[_sku].sku; */
-  /*   price = items[_sku].price; */
-  /*   state = uint(items[_sku].state); */
-  /*   seller = items[_sku].seller; */
-  /*   buyer = items[_sku].buyer; */
-  /*   return (name, sku, price, state, seller, buyer); */
-  /* } */
+  function fetchItem(uint _sku) 
+    public 
+    view 
+    returns (string memory name, uint sku, uint price, uint state, address seller, address buyer) 
+  {
+    name = items[_sku].name;
+    sku = items[_sku].sku;
+    price = items[_sku].price;
+    state = uint(items[_sku].state);
+    seller = items[_sku].seller;
+    buyer = items[_sku].buyer;
+    return (name, sku, price, state, seller, buyer);
+  }
 }
